@@ -3,17 +3,25 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
+from twisted.internet import task
+from twisted.internet import reactor
+from twisted.python import log
+import sys
 import getpass
 import random
 import copy
 import time
 import requests
 
+log.startLogging(sys.stdout)
 driver = webdriver.Chrome()
 driver.implicitly_wait(5)
 world = 101
 units = {'spear':0, 'sword':0, 'axe':0, 'archer':0, 'spy':0, 'light':0, 'marcher':0, 'heavy':0, 'ram':0, 'catapult':0, 'knight':0, 'snob':0}
 setArrivalTimeScript = requests.get("https://raw.githubusercontent.com/kioniv/TW_Tamper_Monkey/master/Set_Arrival_Time").text
+
+# for some reason the input prompt doesn't get printed when using twisted log
+print("Enter your username: ")
 username = input("Enter your username: ")
 passwd = getpass.getpass("Enter your password: ")
 
@@ -70,42 +78,65 @@ def SendAttack(sendingVillage, targetVillage, arrivalTime, sendUnits):
     driver.find_element_by_id("target_attack").click()
 
     RandWait()
-    #
+    # at confirm page, proceed with timing
     if arrivalTime != "":
-        driver.execute_script(str(setArrivalTimeScript))
-        time.sleep(.5)
-        milliseconds = arrivalTime[-3:]
-        arrivalTime =arrivalTime[:-4]
-        driver.find_element_by_id("delayInput").clear()
-        driver.find_element_by_id("delayInput").send_keys("0")
-        driver.find_element_by_id("delayButton").click()
-        driver.find_element_by_id("reloadInput").clear()
-        driver.find_element_by_id("reloadInput").send_keys("0")
-        driver.find_element_by_id("reloadButton").click()
-        driver.find_element_by_id("arrTime").click()
-
-        WebDriverWait(driver, 3).until(expected_conditions.alert_is_present(),
-                                        'Timed out waiting for PA creation ' +
-                                        'confirmation popup to appear.')
-        alert = driver.switch_to.alert
-        alert.send_keys(arrivalTime)
-        alert.accept()
-
-
-        WebDriverWait(driver, 3).until(expected_conditions.alert_is_present(),
-                                       'Timed out waiting for PA creation ' +
-                                       'confirmation popup to appear.')
-        alert = driver.switch_to.alert
-        alert.send_keys(milliseconds)
-        alert.accept()
-
-        WebDriverWait(driver, 999999999999).until(expected_conditions.url_changes)
-        print ("Sent " + str(sendUnits) + " from " + str(sendingVillage) + " to " + str(targetVillage)
-               + "\nArrival set for " + str(arrivalTime) + ":" + str(milliseconds))
-
+        # UseJSSendAttack(sendingVillage, targetVillage, arrivalTime, sendUnits)
+        TimeAttack(arrivalTime)
     else:
         driver.find_element_by_id("troop_confirm_go").click()
 
+def TimeAttack(arrivalTime):
+
+    def TimeAttackSeconds():
+        if str(arrivalTime) == str(curTime.text)[-8:]:
+            reactor.callLater(milliseconds, SendIt)
+
+    def SendIt():
+        btn.click()
+        print("AAAAHH!")
+        reactor.stop()
+
+    milliseconds = float(arrivalTime[-3:]) / 1000
+    arrivalTime = arrivalTime[:-4]
+    curTime = driver.find_element_by_class_name("relative_time")
+    btn = driver.find_element_by_id("troop_confirm_go")
+
+    l = task.LoopingCall(TimeAttackSeconds())
+    l.start(.005)
+    reactor.run()
+
+
+
+def UseJSSendAttack(sendingVillage, targetVillage, arrivalTime, sendUnits):
+    driver.execute_script(str(setArrivalTimeScript))
+    time.sleep(.5)
+    milliseconds = arrivalTime[-3:]
+    arrivalTime = arrivalTime[:-4]
+    driver.find_element_by_id("delayInput").clear()
+    driver.find_element_by_id("delayInput").send_keys("0")
+    driver.find_element_by_id("delayButton").click()
+    driver.find_element_by_id("reloadInput").clear()
+    driver.find_element_by_id("reloadInput").send_keys("0")
+    driver.find_element_by_id("reloadButton").click()
+    driver.find_element_by_id("arrTime").click()
+
+    WebDriverWait(driver, 3).until(expected_conditions.alert_is_present(),
+                                   'Timed out waiting for PA creation ' +
+                                   'confirmation popup to appear.')
+    alert = driver.switch_to.alert
+    alert.send_keys(arrivalTime)
+    alert.accept()
+
+    WebDriverWait(driver, 3).until(expected_conditions.alert_is_present(),
+                                   'Timed out waiting for PA creation ' +
+                                   'confirmation popup to appear.')
+    alert = driver.switch_to.alert
+    alert.send_keys(milliseconds)
+    alert.accept()
+
+    WebDriverWait(driver, 999999999999).until(expected_conditions.url_changes)
+    print("Sent " + str(sendUnits) + " from " + str(sendingVillage) + " to " + str(targetVillage)
+          + "\nArrival set for " + str(arrivalTime) + ":" + str(milliseconds))
 
 
 def EnterUnits(sendUnitsDict):
@@ -125,9 +156,18 @@ def NavCombinedOverview():
 def RandWait():
     time.sleep(random.uniform(.2, .7))
 
-Login(username, passwd, world)
+def GetCurTime():
+    return driver.find_element_by_id("serverTime").text
+
+def EnsureLoggedIn():
+    try:
+        GetCurTime()
+    except:
+        Login(username, passwd, world)
+
+EnsureLoggedIn()
 
 myAttack = copy.deepcopy(units)
 myAttack['spear'] = 1
 
-SendAttack("current", "560|454", "02:43:00:000", myAttack)
+SendAttack("current", "560|454", "21:55:00:500", myAttack)
